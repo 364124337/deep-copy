@@ -336,4 +336,128 @@ const symbolTag = '[object Symbol]';
 ### 可继续遍历的类型
 上面我们已经考虑的object、array都属于可以继续遍历的类型，因为它们内存都还可以存储其他数据类型的数据，另外还有Map，Set等都是可以继续遍历的类型，这里我们只考虑这四种，如果你有兴趣可以继续探索其他类型。
 
+有序这几种类型还需要继续进行递归，我们首先需要获取它们的初始化数据，例如上面的[]和{}，我们可以通过拿到constructor的方式来通用的获取。
+例如：const target = {}就是const target = new Object()的语法糖。另外这种方法还有一个好处：因为我们还使用了原对象的构造方法，所以它可以保留对象原型上的数据，如果直接使用普通的{}，那么原型必然是丢失了的。
+
+```
+function getInit(target) {
+  const Ctor = target.constructor
+  return new Ctor()
+}
+```
+
+下面，我们改写clone函数，对可继续遍历的数据类型进行处理：
+
+```
+const deepTag = [mapTag, setTag, arrayTag, objectTag, argsTag];
+
+function clone(target, map = new WeakMap()) {
+  // 克隆原始类型
+  if (!isObject(target)) {
+    return target
+  }
+  
+  // 初始化
+  const type = getType(target)
+  let cloneTarget
+  if (deepTag.includes(type)) {
+    cloneTarget = getInit(target, type)
+  }
+  
+  // 防止循环引用
+  if (map.get(target)) {
+    return map.get(target)
+  }
+  map.set(target, cloneTarget)
+  
+  // 克隆set
+  if (type === setTag) {
+    target.forEach(value => {
+      cloneTarget.add(clone(value, map))
+    })
+    return cloneTarget
+  }
+  
+  // 克隆map
+  if (type === mapTag) {
+    target.forEach((value, key) => {
+      cloneTarget.set(key, clone(value, map))
+    })
+    return cloneTarget
+  }
+  
+   // 克隆对象和数组
+   const keys = type === arrayTag ? undefined : Object.keys(target)
+   forEach(keys || target, (value, key) => {
+      if (keys) {
+        key = value
+      }
+      cloneTarget[key] = clone(target[key], map)
+   })
+   return cloneTarget
+}
+```
+
+我们执行clone5.test.js对下面的测试用例进行测试：
+
+```
+const target = {
+    field1: 1,
+    field2: undefined,
+    field3: {
+        child: 'child'
+    },
+    field4: [2, 4, 8],
+    empty: null,
+    map,
+    set,
+};
+```
+
+没有问题，里大功告成又进一步，下面我们继续处理其他类型：
+
+### 不可继续遍历的类型
+
+其他剩余的类型我们把它们统一归类成不可处理的数据类型，我们依次进行处理：
+
+Bool、Number、String、String、Date、Error这几种类型我们都可以直接用构造函数和原始数据创建一个新对象：
+
+```
+function cloneOtherType(target, type) {
+  const Ctor = target.constructor
+  switch(type) {
+    case boolTag:
+    case numberTag:
+    case stringTag:
+    case errorTag:
+    case dateTag:
+        return new Ctor(targe);
+    case regexpTag:
+        return cloneReg(targe);
+    case symbolTag:
+        return cloneSymbol(targe);
+    default:
+        return null;
+  }
+}
+```
+
+克隆Symbol类型：
+
+```
+function cloneSymbol(targe) {
+    return Object(Symbol.prototype.valueOf.call(targe));
+}
+
+克隆正则：
+
+function cloneReg(targe) {
+    const reFlags = /\w*$/;
+    const result = new targe.constructor(targe.source, reFlags.exec(targe));
+    result.lastIndex = targe.lastIndex;
+    return result;
+}
+```
+
+实际上还有很多数据类型我这里没有写到，有兴趣的话可以继续探索实现一下。
 
